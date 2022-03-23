@@ -263,6 +263,7 @@ knitr::kable(posterior::summarise_draws(alpha_posterior_sample[,3:8]), digits = 
 knitr::kable(posterior::summarise_draws(scales_posterior_sample[,3:7]), digits = 3)
 knitr::kable(posterior::summarise_draws(beta_posterior_sample[,3:4]), digits = 3)
 ```
+
 |variable    |   mean| median|    sd|   mad|     q5|    q95| rhat| ess_bulk| ess_tail|
 |:-----------|------:|------:|-----:|-----:|------:|------:|----:|--------:|--------:|
 |Ag          | -2.027| -2.004| 0.690| 0.714| -3.187| -0.915|    1| 3773.573| 5550.460|
