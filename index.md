@@ -1,8 +1,8 @@
 # Single-season Occupancy Model example using BLISS
 
-This is a quick explanation of a single-season occupancy model ([MacKenzie et al. 2006][1]) implemented using the BLISS method from [Stuber et al. 2017][2]. The original version of this analysis was implemented in the `unmarked` [package][3] in R. 
+I have been wanting to update my occupancy modeling from the old frequentist technique to Bayesian. I recently found `nimble`, and that is great, but there was still the nagging discomfort about model selection when working with multiple spatial scales for various coefficients. I finally came across the BLISS method from [Stuber et al. 2017][2], and it was exactly what I was looking for! It uses a latent variable that selects a scale from the candidate set, and removes the issues associated with highly-correlated land-cover variables. The paper is a really great read. To try and figure out how their code works, I went back to an old data set of mine that I published [(Isdell et al. 2014)][5] using a single-season occupancy model implemented in `unmarked` ([Chandler et al. 2021][3]) in R. 
 
-The dataset consists of three replicate presence/absence surveys for diamondback terrapins at 165 sites in the southern Chesapeake Bay. Precipitation (Y/N) and start time were recorded during each survey for the detection probability, and the number of active crab pot buoys within 250 m of a site were also counted. Spatial covariates were derived from GIS layers at multiple scales (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3, 4, 5, 6, 7, 8, 9, 10 km) for agricultural, marsh, and low intensity development, as well as ghost crab pots and shoreline armoring. Active pots were scaled across the three surveys (mean/sd) for a single site-estimate.
+The data consist of three replicate presence/absence surveys for diamondback terrapins at 165 sites in the southern Chesapeake Bay. Precipitation (Y/N) and start time were recorded during each survey for the detection probability, and the number of active crab pot buoys within 250 m of a site were also counted. Spatial covariates were derived from GIS layers at multiple scales (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3, 4, 5, 6, 7, 8, 9, 10 km) for agricultural, marsh, and low intensity development, as well as ghost crab pots and shoreline armoring. Active pots were scaled across the three surveys (mean/sd) for a single site-estimate. Below are some of the highlights and modifications that I made to the original code from [Stuber et al. 2017][2] to adapt it to a single-season occupancy model running on multiple parallel chains in JAGS. Grab the repo for the full data and code.
 
 ## Data structure
 ```r
@@ -294,3 +294,4 @@ There's plenty more to do, but this should be enough to help you get started. Do
 [2]: <https://doi.org/10.1007/s10980-017-0575-y> 
 [3]: <https://cran.r-project.org/web/packages/unmarked/index.html>
 [4]: <https://static-content.springer.com/esm/art%3A10.1007%2Fs10980-017-0575-y/MediaObjects/10980_2017_575_MOESM2_ESM.txt>
+[5]: <https://onlinelibrary.wiley.com/doi/full/10.1111/ddi.12289>
