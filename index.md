@@ -287,6 +287,10 @@ bayesplot::mcmc_hist(scales_posterior_sample[,3:7], binwidth = 1) +
 ```
 ![ExamplePosteriorPlot](https://user-images.githubusercontent.com/48960489/159711017-878d7929-90b5-4635-8697-60f357e7d5a7.jpg)
 
+And here is the really cool part about BLISS. You can see how the posterior is distributed across the scales for each parameter. In the plots below, the x-axis is the index of each scale (1-16). The BLISS function returns which scale recieves the highest density, but it operates over all of them. 
+![ExampleScalePlot](https://user-images.githubusercontent.com/48960489/159755959-745c5ad7-b246-4c61-9a6f-05d07ca7caaa.jpg)
+
+
 There's plenty more to do, but this should be enough to help you get started. Download the repo for the full analysis.
 
 
