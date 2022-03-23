@@ -1,0 +1,46 @@
+model {
+    prec_coef <- 0.01
+
+    # Priors for covariates of ecological model
+    for (i in 1:(ncovariates_abundance + nyears)) {
+        alpha[i] ~ dnorm(0.0, prec_coef)
+    }
+
+    abundance_scale[1] ~ dcat(c(0.25, 0.25, 0.25, 0.25))
+    abundance_scale[2] ~ dcat(c(0.25, 0.25, 0.25, 0.25))
+    abundance_scale[3] ~ dcat(c(0.25, 0.25, 0.25, 0.25))
+
+    # Priors for covariates of observation model
+    for (i in 1:ncovariates_detection) {
+        beta[i] ~ dnorm(0.0, prec_coef)
+    }
+
+    # Random effects for the observation model
+    sigma.observer ~ dexp(1)
+    tau.observer <- 1 / (sigma.observer * sigma.observer)
+    for (o in 1:nobservers) {
+        u.observer[o] ~ dnorm(0, tau.observer)
+    }
+
+    # Ecological model
+    for (s in 1:nsites) {
+        # Ecological model
+        log_lambda[s] <- alpha[1] * abundance_covariates[s, abundance_scale[1], 1] + alpha[2] * abundance_covariates[s, abundance_scale[2], 2] + alpha[3] * abundance_covariates[s, abundance_scale[3], 3] + alpha[4] * abundance_year_covariates[s, 1] + alpha[5] * abundance_year_covariates[s, 2] + alpha[6] * abundance_year_covariates[s, 3]
+
+        log(lambda[s]) <- log_lambda[s]
+
+        N[s] ~ dpois(lambda[s])
+    }
+
+    # Observation model
+    for (i in 1:nobservations) {
+        logit_p_fixed[i] <- beta %*% detection_covariates[i,]
+
+        logit_p_random[i] <- u.observer[observers[i]]
+
+        logit_p[i] <- logit_p_fixed[i] + logit_p_random[i]
+
+        p[i] <- 1 / (1 + exp(-logit_p[i]))
+        d[i] ~ dbin(p[i], N[abundance_row_numbers[i]])
+    }
+}
