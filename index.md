@@ -46,6 +46,7 @@ model {
     for (i in 1:(ncovariates_occurrence)) {
         alpha[i] ~ dnorm(0.0, prec_coef)
     }
+    alpha.int ~ dnorm(0, 1)
 
     occurrence_scale[1] ~ dcat(c(0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
                                  0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
@@ -71,6 +72,7 @@ model {
     for (i in 1:ncovariates_detection) {
         beta[i] ~ dnorm(0.0, prec_coef)
     }
+    beta.int ~ dnorm(0, 1)
 
     # Random effects for the observation model
     # sigma.observer ~ dexp(1)
@@ -79,29 +81,35 @@ model {
     #     u.observer[o] ~ dnorm(0, tau.observer)
     # }
 
-    # Occurrence model
+    # Ecological model
     for (s in 1:nsites) {
-        # Ecological model
-        logit_psi[s] <- alpha[1] * occurrence_covariates[s, occurrence_scale[1], 1] + 
+      # Ecological model
+        logit_psi[s] <- alpha.int + 
+        alpha[1] * occurrence_covariates[s, occurrence_scale[1], 1] + 
         alpha[2] * occurrence_covariates[s, occurrence_scale[2], 2] + 
         alpha[3] * occurrence_covariates[s, occurrence_scale[3], 3] + 
         alpha[4] * occurrence_covariates[s, occurrence_scale[4], 4] + 
         alpha[5] * occurrence_covariates[s, occurrence_scale[5], 5] + 
         alpha[6] * occurrence_crabpots[s, 1]
-
-        psi[s] <- 1/(1 + exp(-logit_psi[s]))
+        # Set limits
+        logit_psi.lim[s] <- min(999,max(-999,logit_psi[s]))
+        psi[s] <- 1/(1 + exp(-logit_psi.lim[s]))
 
         y[s] ~ dbern(psi[s])
-			# Detection model
+	# Observation model
     	for (i in 1:nsurveys) {
-        	logit_d_fixed[s,i] <- beta %*% detection_covariates[s,i,]
-
-        	logit_d[s,i] <- logit_d_fixed[s,i]
-
-        	d[s,i] <- 1 / (1 + exp(-logit_d[s,i])) * psi[s]
-        	yi[s,i] ~ dbern(d[s,i])
+          logit_p[s,i] <- beta.int + beta %*% detection_covariates[s,i,]
+          logit_p.lim[s,i] <- min(999,max(-999,logit_p[s,i]))
+          p[s,i] <- 1/(1 + exp(-logit_p.lim[s,i]))
+          yi[s,i] ~ dbern(p[s,i]*y[s])
+      
+      presid[s,i] <- (yi[s,i] - p[s,i])^2 # squared residual of obs dat
+      y.new[s,i] ~ dbern(p[s,i]*y[s]) # sim data
+      presid.new[s,i] <- (y.new[s,i] - p[s,i])^2 # sq resid of sim data
     	}
     } 
+  mean.p <- exp(beta.int)/(1 + exp(beta.int))  # mean detection probability
+  occ.sites <- sum(y[]) # number of occupied sites per iteration
 }
 ```
 Using the same methods as the original BLISS paper ([Stuber et al. 2017][2]), uniform priors were set for each of the candidate scales. Observer was excluded from this model because there was a single observer for the entire study, but see [here][4] for the original version of the JAGS model and how to incoporate multiple observers. The model was further modified to include the detection as a sub-model of the occurrence model. 
@@ -140,13 +148,9 @@ occ_BLISS = function(data, jags_file, niterations = 20000, burnin = 5000, chains
   samples_jags = rjags::jags.samples(
     jags_model,
     variable.names = c(
-      "alpha",
-      "occurrence_scale",
-      "beta",
-      "logit_psi",
-      "logit_d_fixed",
-      "y",
-      "yi"
+      "alpha", "occurrence_scale", "beta", "logit_psi", 
+      "y", "yi", "p", "presid", "y.new", "presid.new", 
+      "mean.p", "occ.sites"
     ),
     n.iter = niterations,
     thin = 1
@@ -185,9 +189,9 @@ Only minor modifications were made to the [Stuber et al. 2017][2] BLISS function
 
 ## Run the model
 ```r
-occ2 <- occ_BLISS(
+occ <- occ_BLISS(
   data = jags.data2,
-  jags_file = here::here("Scripts/TerrapinBLISSJAGSModel2.txt"),
+  jags_file = here::here("Scripts/TerrapinBLISSJAGSModel3.txt"),
   niterations = 3000,
   burnin = 1000,
   chains = 4
@@ -198,62 +202,76 @@ occ2 <- occ_BLISS(
 Once you have results, you can assess the model fit.
 ```r
 bayesplot::mcmc_trace(
-  coda::as.mcmc.list(occ2$selected_model_results$alpha),
+  coda::as.mcmc.list(occ$selected_model_results$alpha),
 ) + ggtitle("Occurrence Coefficients")
 bayesplot::mcmc_trace(
-  coda::as.mcmc.list(occ2$selected_model_results$beta),
+  coda::as.mcmc.list(occ$selected_model_results$beta),
 ) + ggtitle("Detection Coefficients")
 bayesplot::mcmc_trace(
-  coda::as.mcmc.list(occ2$selected_model_results$occurrence_scale),
+  coda::as.mcmc.list(occ$selected_model_results$occurrence_scale),
 ) + ggtitle("Best Scales")
 ```
-![ExampleTracePlot](https://user-images.githubusercontent.com/48960489/159709395-64b35fb2-5295-41af-bf38-ed4cb81b4418.jpg)
+![ExampleTracePlot](https://user-images.githubusercontent.com/48960489/159991269-26579e76-5cad-4f13-9ea4-e8bd06ec2d94.jpg)
+
 
 ## Extract the posteriors
 Extract the draws for plots and summaries. I'm positive there's a more efficient way to do this, but, as a quick side project, I just adapted the methods from the original paper.
 ```r
+# Occurrence covariates
 alpha_posterior_sample = data.frame(
-  chain = rep(1:occ2$nchains, each = occ2$niterations),
-  iteration = rep(1:occ2$niterations, times = occ2$nchains),
-  alpha = rbind(t(occ2$selected_model_results$alpha[,,1]),
-                t(occ2$selected_model_results$alpha[,,2]),
-                t(occ2$selected_model_results$alpha[,,3]),
-                t(occ2$selected_model_results$alpha[,,4]))
+  chain = rep(1:occ$nchains, each = occ$niterations),
+  iteration = rep(1:occ$niterations, times = occ$nchains),
+  alpha = rbind(t(occ$selected_model_results$alpha[,,1]),
+                t(occ$selected_model_results$alpha[,,2]),
+                t(occ$selected_model_results$alpha[,,3]),
+                t(occ$selected_model_results$alpha[,,4]))
 )
 names(alpha_posterior_sample) <- c(
   "chain", "iteration", "Ag", "Marsh", "Ghost Pots", 
   "Low Urban", "Armoring", "Active Pots"
 )
+# Scales
 scales_posterior_sample = data.frame(
-  chain = rep(1:occ2$nchains, each = occ2$niterations),
-  iteration = rep(1:occ2$niterations, times = occ2$nchains),
-  scale = rbind(t(occ2$selected_model_results$occurrence_scale[,,1]),
-                t(occ2$selected_model_results$occurrence_scale[,,2]),
-                t(occ2$selected_model_results$occurrence_scale[,,3]),
-                t(occ2$selected_model_results$occurrence_scale[,,4]))
+  chain = rep(1:occ$nchains, each = occ$niterations),
+  iteration = rep(1:occ$niterations, times = occ$nchains),
+  scale = rbind(t(occ$selected_model_results$occurrence_scale[,,1]),
+                t(occ$selected_model_results$occurrence_scale[,,2]),
+                t(occ$selected_model_results$occurrence_scale[,,3]),
+                t(occ$selected_model_results$occurrence_scale[,,4]))
 )
 names(scales_posterior_sample) <- c(
   "chain", "iteration", "Ag", "Marsh", "Ghost Pots", 
   "Low Urban", "Armoring"
 )
-site_posterior_sample = data.frame(
-  chain = rep(1:occ2$nchains, each = occ2$niterations),
-  iteration = rep(1:occ2$niterations, times = occ2$nchains),
-  sites = rbind(t(occ2$selected_model_results$y[,,1]),
-                t(occ2$selected_model_results$y[,,2]),
-                t(occ2$selected_model_results$y[,,3]),
-                t(occ2$selected_model_results$y[,,4]))
-)
+# Detection covariates
 beta_posterior_sample = data.frame(
-  chain = rep(1:occ2$nchains, each = occ2$niterations),
-  iteration = rep(1:occ2$niterations, times = occ2$nchains),
-  beta =  rbind(t(occ2$selected_model_results$beta[,,1]),
-                t(occ2$selected_model_results$beta[,,2]),
-                t(occ2$selected_model_results$beta[,,3]),
-                t(occ2$selected_model_results$beta[,,4]))
+  chain = rep(1:occ$nchains, each = occ$niterations),
+  iteration = rep(1:occ$niterations, times = occ$nchains),
+  beta =  rbind(t(occ$selected_model_results$beta[,,1]),
+                t(occ$selected_model_results$beta[,,2]),
+                t(occ$selected_model_results$beta[,,3]),
+                t(occ$selected_model_results$beta[,,4]))
 )
 names(beta_posterior_sample) <- c(
   "chain", "iteration", "Start Time", "Precipitation"
+)
+# Number of occupied sites
+total_sites_posterior_sample = data.frame(
+  chain = rep(1:occ$nchains, each = occ$niterations),
+  iteration = rep(1:occ$niterations, times = occ$nchains),
+  total = c(as.vector(occ$selected_model_results$occ.sites[,,1]),
+            as.vector(occ$selected_model_results$occ.sites[,,2]),
+            as.vector(occ$selected_model_results$occ.sites[,,3]),
+            as.vector(occ$selected_model_results$occ.sites[,,4]))
+)
+# Detection probability
+mean_p_posterior_sample = data.frame(
+  chain = rep(1:occ$nchains, each = occ$niterations),
+  iteration = rep(1:occ$niterations, times = occ$nchains),
+  prob = c(as.vector(occ$selected_model_results$mean.p[,,1]),
+            as.vector(occ$selected_model_results$mean.p[,,2]),
+            as.vector(occ$selected_model_results$mean.p[,,3]),
+            as.vector(occ$selected_model_results$mean.p[,,4]))
 )
 ```
 
@@ -264,14 +282,14 @@ knitr::kable(posterior::summarise_draws(scales_posterior_sample[,3:7]), digits =
 knitr::kable(posterior::summarise_draws(beta_posterior_sample[,3:4]), digits = 3)
 ```
 
-|variable    |   mean| median|    sd|   mad|     q5|    q95| rhat| ess_bulk| ess_tail|
-|:-----------|------:|------:|-----:|-----:|------:|------:|----:|--------:|--------:|
-|Ag          | -2.027| -2.004| 0.690| 0.714| -3.187| -0.915|    1| 3773.573| 5550.460|
-|Marsh       |  3.302|  3.291| 0.651| 0.661|  2.265|  4.380|    1| 4121.447| 5184.022|
-|Ghost Pots  | -1.116| -1.149| 0.685| 0.666| -2.180|  0.065|    1| 3117.209| 4232.506|
-|Low Urban   | -0.209| -0.202| 0.782| 0.784| -1.495|  1.079|    1| 3522.950| 5440.417|
-|Armoring    | -2.657| -2.652| 0.740| 0.734| -3.882| -1.445|    1| 3544.149| 5522.688|
-|Active Pots | -1.483| -1.485| 0.674| 0.670| -2.588| -0.384|    1| 4847.501| 6212.008|
+|variable    |   mean| median|    sd|   mad|     q5|    q95|  rhat| ess_bulk| ess_tail|
+|:-----------|------:|------:|-----:|-----:|------:|------:|-----:|--------:|--------:|
+|Ag          | -1.400| -1.382| 0.775| 0.788| -2.708| -0.153| 1.001| 2099.921| 4258.567|
+|Marsh       |  3.163|  3.151| 0.762| 0.773|  1.935|  4.435| 1.001| 2194.200| 4208.497|
+|Ghost Pots  | -0.445| -0.465| 0.812| 0.811| -1.761|  0.906| 1.000| 2579.304| 4730.546|
+|Low Urban   | -0.295| -0.283| 0.856| 0.848| -1.730|  1.100| 1.000| 2607.460| 5161.259|
+|Armoring    | -2.073| -2.066| 0.816| 0.808| -3.426| -0.729| 1.001| 2301.367| 3698.624|
+|Active Pots | -1.398| -1.400| 0.750| 0.747| -2.640| -0.158| 1.001| 3345.458| 5629.992|
 
 ## Plot the posteriors
 ```r
@@ -285,10 +303,14 @@ bayesplot::mcmc_areas(beta_posterior_sample[,3:4], prob = 0.89) +
 bayesplot::mcmc_hist(scales_posterior_sample[,3:7], binwidth = 1) + 
   labs(x = "Posterior Scale Estimates")
 ```
-![ExamplePosteriorPlot](https://user-images.githubusercontent.com/48960489/159711017-878d7929-90b5-4635-8697-60f357e7d5a7.jpg)
+![ExamplePosteriorPlot](https://user-images.githubusercontent.com/48960489/159991906-82bc30c7-8dd1-4e76-8921-e28dc96ad7c5.jpg)
 
 And here is the really cool part about BLISS. You can see how the posterior is distributed across the scales for each parameter. In the plots below, the x-axis is the index of each scale (1-16). The BLISS function returns which scale recieves the highest density, but it operates over all of them. 
-![ExampleScalePlot](https://user-images.githubusercontent.com/48960489/159755959-745c5ad7-b246-4c61-9a6f-05d07ca7caaa.jpg)
+![ExampleScalesPlot](https://user-images.githubusercontent.com/48960489/159992335-e3a0feb9-e08b-4569-8244-4e66c69ac478.jpg)
+
+
+The posteriors for number of occupied sites and detection probability are always useful.
+![ExampleSitesAndDetProbPosteriors](https://user-images.githubusercontent.com/48960489/159991836-248e7f56-38dd-4072-870a-5d5d40d924f6.jpg)
 
 
 There's plenty more to do, but this should be enough to help you get started. Download the repo for the full analysis.
