@@ -1,0 +1,72 @@
+model {
+    prec_coef <- 1
+
+    # Priors for covariates of ecological model
+    for (i in 1:(ncovariates_occurrence)) {
+        alpha[i] ~ dnorm(0.0, prec_coef)
+    }
+    alpha.int ~ dnorm(0, 1)
+
+    occurrence_scale[1] ~ dcat(c(0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625))
+    occurrence_scale[2] ~ dcat(c(0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625))
+    occurrence_scale[3] ~ dcat(c(0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625))                        
+    occurrence_scale[4] ~ dcat(c(0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625))
+    occurrence_scale[5] ~ dcat(c(0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 
+                                 0.0625))                            
+    # Priors for covariates of observation model
+    for (i in 1:ncovariates_detection) {
+        beta[i] ~ dnorm(0.0, prec_coef)
+    }
+    beta.int ~ dnorm(0, 1)
+
+    # Random effects for the observation model
+    # sigma.observer ~ dexp(1)
+    # tau.observer <- 1 / (sigma.observer * sigma.observer)
+    # for (o in 1:nobservers) {
+    #     u.observer[o] ~ dnorm(0, tau.observer)
+    # }
+
+    # Ecological model
+    for (s in 1:nsites) {
+      # Ecological model
+        logit_psi[s] <- alpha.int + 
+        alpha[1] * occurrence_covariates[s, occurrence_scale[1], 1] + 
+        alpha[2] * occurrence_covariates[s, occurrence_scale[2], 2] + 
+        alpha[3] * occurrence_covariates[s, occurrence_scale[3], 3] + 
+        alpha[4] * occurrence_covariates[s, occurrence_scale[4], 4] + 
+        alpha[5] * occurrence_covariates[s, occurrence_scale[5], 5] + 
+        alpha[6] * occurrence_crabpots[s, 1]
+        # Set limits
+        logit_psi.lim[s] <- min(999,max(-999,logit_psi[s]))
+        psi[s] <- 1/(1 + exp(-logit_psi.lim[s]))
+
+        y[s] ~ dbern(psi[s])
+	    # Observation model
+    	for (i in 1:nsurveys) {
+        	logit_p[s,i] <- beta.int + beta %*% detection_covariates[s,i,]
+          logit_p.lim[s,i] <- min(999,max(-999,logit_p[s,i]))
+          p[s,i] <- 1/(1 + exp(-logit_p.lim[s,i]))
+        	yi[s,i] ~ dbern(p[s,i]*y[s])
+      
+      presid[s,i] <- (yi[s,i] - p[s,i])^2 # squared residual of obs dat
+      y.new[s,i] ~ dbern(p[s,i]*y[s]) # sim data
+      presid.new[s,i] <- (y.new[s,i] - p[s,i])^2 # sq resid of sim data
+    	}
+    } 
+  mean.p <- exp(beta.int)/(1 + exp(beta.int))  
+  occ.sites <- sum(y[])
+}
