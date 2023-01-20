@@ -312,6 +312,8 @@ And here is the really cool part about BLISS. You can see how the posterior is d
 The posteriors for number of occupied sites and detection probability are always useful.
 ![ExampleSitesAndDetProbPosteriors](https://user-images.githubusercontent.com/48960489/159991836-248e7f56-38dd-4072-870a-5d5d40d924f6.jpg)
 
+With your model in place, apply it to your study area.
+![ExampleTerrapinMap](https://github.com/risdell/SingleSeasonOccupancyModelBliss/blob/8d8c40711f066b0620c4bcefb93b18fc96a2817a/Output/Figures/TerrapinOccupancy.png)
 
 There's plenty more to do, but this should be enough to help you get started. Download the repo for the full analysis.
 
